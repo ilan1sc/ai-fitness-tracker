@@ -225,6 +225,7 @@
         function drawSkeleton(landmarks) {
             const w = canvasElement.width;
             const h = canvasElement.height;
+            console.log('drawSkeleton called, canvas:', w, h, 'landmarks:', landmarks.length);
 
             // Draw bones
             canvasCtx.strokeStyle = '#00E5FF';
@@ -232,7 +233,6 @@
             canvasCtx.lineCap = 'round';
             for (const [a, b] of SKELETON_CONNECTIONS) {
                 const lmA = landmarks[a], lmB = landmarks[b];
-                if (lmA.visibility < 0.5 || lmB.visibility < 0.5) continue;
                 canvasCtx.beginPath();
                 canvasCtx.moveTo(lmA.x * w, lmA.y * h);
                 canvasCtx.lineTo(lmB.x * w, lmB.y * h);
@@ -241,9 +241,8 @@
 
             // Draw joints
             for (const lm of landmarks) {
-                if (lm.visibility < 0.5) continue;
                 canvasCtx.beginPath();
-                canvasCtx.arc(lm.x * w, lm.y * h, 5, 0, 2 * Math.PI);
+                canvasCtx.arc(lm.x * w, lm.y * h, 6, 0, 2 * Math.PI);
                 canvasCtx.fillStyle = '#FF6D00';
                 canvasCtx.fill();
                 canvasCtx.strokeStyle = '#FF1744';
