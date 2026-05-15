@@ -168,6 +168,7 @@
 
     <script>
         // --- CONFIGURATION ---
+        const VERSION = '1.0.0';
         let currentMode = 'pushups'; // pushups, squats, situps
         let repCount = 0;
         let currentState = 'Ready'; // Up, Down, Transition
@@ -434,6 +435,11 @@
 
         window.onload = function() {};
 
+    </script>
+    <div id="version-tag" style="position:fixed; bottom:8px; right:12px; font-size:0.7rem; color:#555; pointer-events:none;"></div>
+
+    <script>
+        document.getElementById('version-tag').textContent = 'v' + VERSION;
     </script>
 </body>
 </html>
