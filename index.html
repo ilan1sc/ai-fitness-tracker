@@ -6,6 +6,8 @@
     <title>AI Fitness Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4.1646227924/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js"></script>
     <style>
         body {
             margin: 0;
@@ -16,6 +18,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            height: 100dvh;
             overflow: hidden;
         }
 
@@ -34,19 +37,20 @@
         #video-container {
             position: relative;
             width: 100%;
-            max-width: 800px;
-            flex-grow: 1;
+            height: 50dvh;
+            flex-shrink: 0;
             display: flex;
             justify-content: center;
             align-items: center;
             background: #000;
+            overflow: hidden;
         }
 
         video {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scaleX(-1); /* Mirror effect for phone front cam */
+            transform: scaleX(-1);
         }
 
         canvas {
@@ -55,17 +59,30 @@
             left: 0;
             width: 100%;
             height: 100%;
-            transform: scaleX(-1); /* Mirror canvas to match video */
+            transform: scaleX(-1);
+        }
+
+        #augment-btn {
+            background: #1565c0;
+            width: auto;
+            padding: 15px 24px;
+        }
+        #augment-btn.active {
+            background: #4caf50;
         }
 
         #stats-panel {
             width: 100%;
-            padding: 20px;
+            flex: 1;
+            min-height: 0;
+            padding: 15px 20px;
             background: #2d2d2d;
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 10px;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+            overflow-y: auto;
+            box-sizing: border-box;
         }
 
         .stat-box {
@@ -128,7 +145,7 @@
         <p>Camera: <span id="camera-status" style="color:#ffeb3b">Checking...</span> | Model: MediaPipe Pose</p>
     </header>
 
-    <div id="video-container" style="position:relative; width:100%; max-width:800px; flex-grow:1; display:flex; justify-content:center; align-items:center; background:#000;">
+    <div id="video-container">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="output_canvas"></canvas>
         <div id="permission-screen" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#000; padding:40px; text-align:center; gap:20px; z-index:10;">
@@ -162,7 +179,10 @@
             <span class="stat-value" id="current-state">Ready</span>
         </div>
         
-        <button onclick="resetCounters()">Reset Counters</button>
+        <div style="display:flex; gap:10px;">
+            <button id="reset-btn" style="flex:1;">Reset Counters</button>
+            <button id="augment-btn" class="active" style="flex:1;">Skeleton: ON</button>
+        </div>
     </div>
 
     <script>
@@ -195,21 +215,29 @@
             minTrackingConfidence: 0.5
         });
 
+        let augmentEnabled = true;
+
         pose.onResults((results) => {
             if (!detectionActive) return;
 
-            // Draw the skeleton
-            canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-            
+
+            if (augmentEnabled && results.poseLandmarks) {
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
+                    color: '#00E5FF',
+                    lineWidth: 4
+                });
+                drawLandmarks(canvasCtx, results.poseLandmarks, {
+                    color: '#FF1744',
+                    fillColor: '#FF6D00',
+                    lineWidth: 2,
+                    radius: 5
+                });
+            }
+
             if (results.poseLandmarks) {
-                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
-                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
-                
                 analyzePose(results.poseLandmarks);
             }
-            canvasCtx.restore();
         });
 
         // --- VIDEO INITIALIZATION ---
@@ -219,16 +247,11 @@
             }
 
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: "user" // Use front camera
-                }
+                video: { facingMode: "user" }
             });
             videoElement.srcObject = stream;
-            return new Promise((resolve) => {
-                videoElement.onloadedmetadata = () => {
-                    resolve(videoElement);
-                };
-            });
+            await videoElement.play();
+            return videoElement;
         }
 
         async function runPose() {
@@ -236,11 +259,16 @@
             detectionActive = true;
             msgDisplay.innerText = "Tracking Started. Make sure you are fully visible.";
 
-            canvasElement.width = videoElement.videoWidth;
-            canvasElement.height = videoElement.videoHeight;
+            canvasElement.width = videoElement.videoWidth || 640;
+            canvasElement.height = videoElement.videoHeight || 480;
 
             async function sendFrame() {
                 if (!detectionActive) return;
+                // Keep canvas in sync with actual video dimensions
+                if (videoElement.videoWidth && canvasElement.width !== videoElement.videoWidth) {
+                    canvasElement.width = videoElement.videoWidth;
+                    canvasElement.height = videoElement.videoHeight;
+                }
                 await pose.send({image: videoElement});
                 requestAnimationFrame(sendFrame);
             }
@@ -402,6 +430,16 @@
             msgDisplay.innerText = `Mode switched to ${mode}. Resetting counters.`;
             msgDisplay.style.color = "#ffeb3b";
         }
+
+        document.getElementById('augment-btn').addEventListener('click', function() {
+            augmentEnabled = !augmentEnabled;
+            this.textContent = augmentEnabled ? 'Skeleton: ON' : 'Skeleton: OFF';
+            this.classList.toggle('active', augmentEnabled);
+            if (!augmentEnabled) canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            console.log('Skeleton toggled:', augmentEnabled);
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', resetCounters);
 
         function resetCounters() {
             repCount = 0;
