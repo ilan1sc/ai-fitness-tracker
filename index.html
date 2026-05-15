@@ -207,8 +207,7 @@
         // --- VIDEO INITIALIZATION ---
         async function setupCamera() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert('Browser does not support Camera API');
-                return;
+                throw new Error('Browser does not support Camera API');
             }
 
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -402,24 +401,15 @@
         window.onload = async function() {
             const statusEl = document.getElementById('camera-status');
             try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const hasCam = devices.some(d => d.kind === 'videoinput');
-                if (!hasCam) {
-                    statusEl.textContent = 'No camera found';
-                    statusEl.style.color = '#e91e63';
-                    msgDisplay.innerText = 'No camera detected on this device.';
-                    return;
-                }
-                const test = await navigator.mediaDevices.getUserMedia({ video: true });
-                test.getTracks().forEach(t => t.stop());
+                await runPose();
                 statusEl.textContent = 'OK';
                 statusEl.style.color = '#4caf50';
-                runPose();
             } catch (err) {
-                statusEl.textContent = err.name === 'NotAllowedError' ? 'Permission denied' : 'Error';
+                const denied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
+                statusEl.textContent = denied ? 'Permission denied' : 'Not found';
                 statusEl.style.color = '#e91e63';
-                msgDisplay.innerText = err.name === 'NotAllowedError'
-                    ? 'Camera permission denied. Please allow camera access and refresh.'
+                msgDisplay.innerText = denied
+                    ? 'Camera permission denied. Please allow access and refresh.'
                     : 'Camera error: ' + err.message;
             }
         };
