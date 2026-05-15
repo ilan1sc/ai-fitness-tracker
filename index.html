@@ -289,6 +289,16 @@
             canvasElement.width = videoElement.videoWidth || 640;
             canvasElement.height = videoElement.videoHeight || 480;
 
+            // Test draw — big red X to confirm canvas is visible
+            canvasCtx.strokeStyle = 'red';
+            canvasCtx.lineWidth = 10;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(0, 0);
+            canvasCtx.lineTo(canvasElement.width, canvasElement.height);
+            canvasCtx.moveTo(canvasElement.width, 0);
+            canvasCtx.lineTo(0, canvasElement.height);
+            canvasCtx.stroke();
+
             async function sendFrame() {
                 if (!detectionActive) return;
                 // Keep canvas in sync with actual video dimensions
