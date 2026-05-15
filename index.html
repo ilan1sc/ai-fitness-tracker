@@ -254,6 +254,7 @@
         let augmentEnabled = true;
 
         pose.onResults((results) => {
+            console.log('onResults fired, detectionActive:', detectionActive, 'landmarks:', results.poseLandmarks ? results.poseLandmarks.length : 'none');
             if (!detectionActive) return;
 
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
