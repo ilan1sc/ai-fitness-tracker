@@ -6,8 +6,6 @@
     <title>AI Fitness Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4.1646227924/pose.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js"></script>
     <style>
         body {
             margin: 0;
@@ -216,6 +214,44 @@
             minTrackingConfidence: 0.5
         });
 
+        const SKELETON_CONNECTIONS = [
+            [11,12],[11,13],[13,15],[12,14],[14,16],
+            [11,23],[12,24],[23,24],
+            [23,25],[25,27],[27,29],[27,31],
+            [24,26],[26,28],[28,30],[28,32],
+            [15,17],[15,19],[16,18],[16,20]
+        ];
+
+        function drawSkeleton(landmarks) {
+            const w = canvasElement.width;
+            const h = canvasElement.height;
+
+            // Draw bones
+            canvasCtx.strokeStyle = '#00E5FF';
+            canvasCtx.lineWidth = 4;
+            canvasCtx.lineCap = 'round';
+            for (const [a, b] of SKELETON_CONNECTIONS) {
+                const lmA = landmarks[a], lmB = landmarks[b];
+                if (lmA.visibility < 0.5 || lmB.visibility < 0.5) continue;
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(lmA.x * w, lmA.y * h);
+                canvasCtx.lineTo(lmB.x * w, lmB.y * h);
+                canvasCtx.stroke();
+            }
+
+            // Draw joints
+            for (const lm of landmarks) {
+                if (lm.visibility < 0.5) continue;
+                canvasCtx.beginPath();
+                canvasCtx.arc(lm.x * w, lm.y * h, 5, 0, 2 * Math.PI);
+                canvasCtx.fillStyle = '#FF6D00';
+                canvasCtx.fill();
+                canvasCtx.strokeStyle = '#FF1744';
+                canvasCtx.lineWidth = 2;
+                canvasCtx.stroke();
+            }
+        }
+
         let augmentEnabled = true;
 
         pose.onResults((results) => {
@@ -224,16 +260,7 @@
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
             if (augmentEnabled && results.poseLandmarks) {
-                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
-                    color: '#00E5FF',
-                    lineWidth: 4
-                });
-                drawLandmarks(canvasCtx, results.poseLandmarks, {
-                    color: '#FF1744',
-                    fillColor: '#FF6D00',
-                    lineWidth: 2,
-                    radius: 5
-                });
+                drawSkeleton(results.poseLandmarks);
             }
 
             if (results.poseLandmarks) {
