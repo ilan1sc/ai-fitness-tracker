@@ -125,7 +125,7 @@
 
     <header>
         <h1>AI Fitness Tracker</h1>
-        <p>Camera: Front | Model: MediaPipe Pose</p>
+        <p>Camera: <span id="camera-status" style="color:#ffeb3b">Checking...</span> | Model: MediaPipe Pose</p>
     </header>
 
     <div id="video-container">
@@ -399,7 +399,30 @@
         }
 
         // Initialize
-        window.onload = runPose;
+        window.onload = async function() {
+            const statusEl = document.getElementById('camera-status');
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const hasCam = devices.some(d => d.kind === 'videoinput');
+                if (!hasCam) {
+                    statusEl.textContent = 'No camera found';
+                    statusEl.style.color = '#e91e63';
+                    msgDisplay.innerText = 'No camera detected on this device.';
+                    return;
+                }
+                const test = await navigator.mediaDevices.getUserMedia({ video: true });
+                test.getTracks().forEach(t => t.stop());
+                statusEl.textContent = 'OK';
+                statusEl.style.color = '#4caf50';
+                runPose();
+            } catch (err) {
+                statusEl.textContent = err.name === 'NotAllowedError' ? 'Permission denied' : 'Error';
+                statusEl.style.color = '#e91e63';
+                msgDisplay.innerText = err.name === 'NotAllowedError'
+                    ? 'Camera permission denied. Please allow camera access and refresh.'
+                    : 'Camera error: ' + err.message;
+            }
+        };
 
     </script>
 </body>
