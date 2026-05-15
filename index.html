@@ -128,17 +128,16 @@
         <p>Camera: <span id="camera-status" style="color:#ffeb3b">Checking...</span> | Model: MediaPipe Pose</p>
     </header>
 
-    <div id="permission-screen" style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:800px; padding:40px; background:#000; text-align:center; gap:20px;">
-        <div style="font-size:4rem;">📷</div>
-        <h2 style="margin:0; color:#4caf50;">Camera Access Required</h2>
-        <p style="color:#ccc; margin:0;">This app needs your camera to track your exercises. Your video is processed locally and never uploaded.</p>
-        <button id="allow-btn" onclick="requestCamera()" style="max-width:300px;">Allow Camera Access</button>
-        <p id="permission-error" style="color:#e91e63; margin:0; display:none;"></p>
-    </div>
-
-    <div id="video-container" style="display:none;">
+    <div id="video-container" style="position:relative; width:100%; max-width:800px; flex-grow:1; display:flex; justify-content:center; align-items:center; background:#000;">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="output_canvas"></canvas>
+        <div id="permission-screen" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#000; padding:40px; text-align:center; gap:20px; z-index:10;">
+            <div style="font-size:4rem;">📷</div>
+            <h2 style="margin:0; color:#4caf50;">Camera Access Required</h2>
+            <p style="color:#ccc; margin:0;">This app needs your camera to track your exercises. Your video is processed locally and never uploaded.</p>
+            <button id="allow-btn" onclick="requestCamera()" style="max-width:300px;">Allow Camera Access</button>
+            <p id="permission-error" style="color:#e91e63; margin:0; display:none;"></p>
+        </div>
     </div>
 
     <div id="stats-panel">
@@ -236,12 +235,16 @@
             await setupCamera();
             detectionActive = true;
             msgDisplay.innerText = "Tracking Started. Make sure you are fully visible.";
-            
-            // Set canvas size to match video
+
             canvasElement.width = videoElement.videoWidth;
             canvasElement.height = videoElement.videoHeight;
-            
-            await pose.send({image: videoElement});
+
+            async function sendFrame() {
+                if (!detectionActive) return;
+                await pose.send({image: videoElement});
+                requestAnimationFrame(sendFrame);
+            }
+            sendFrame();
         }
 
         // --- LOGIC: Exercise Detection Algorithms ---
@@ -417,7 +420,6 @@
             try {
                 await runPose();
                 document.getElementById('permission-screen').style.display = 'none';
-                document.getElementById('video-container').style.display = 'flex';
                 statusEl.textContent = 'OK';
                 statusEl.style.color = '#4caf50';
             } catch (err) {
@@ -429,7 +431,7 @@
                 errEl.style.display = 'block';
                 errEl.textContent = denied
                     ? 'Permission denied. Click the camera icon in your address bar to allow access, then try again.'
-                    : 'Camera error: ' + err.message;
+                    : `Camera error (${err.name}): ${err.message}`;
             }
         }
 
