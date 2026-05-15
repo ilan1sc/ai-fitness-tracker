@@ -423,6 +423,7 @@
                 statusEl.textContent = 'OK';
                 statusEl.style.color = '#4caf50';
             } catch (err) {
+                console.error('Camera error:', err);
                 btn.disabled = false;
                 btn.textContent = 'Try Again';
                 const denied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
