@@ -186,7 +186,7 @@
 
     <script>
         // --- CONFIGURATION ---
-        const VERSION = '1.0.4';
+        const VERSION = '1.0.7';
         let currentMode = 'pushups'; // pushups, squats, situps
         let repCount = 0;
         let currentState = 'Ready'; // Up, Down, Transition
@@ -283,6 +283,8 @@
         }
 
         async function runPose() {
+            msgDisplay.innerText = "Loading pose model...";
+            await pose.initialize();
             await setupCamera();
             detectionActive = true;
             msgDisplay.innerText = "Tracking Started. Make sure you are fully visible.";
@@ -290,15 +292,6 @@
             canvasElement.width = videoElement.videoWidth || 640;
             canvasElement.height = videoElement.videoHeight || 480;
 
-            // Test draw — big red X to confirm canvas is visible
-            canvasCtx.strokeStyle = 'red';
-            canvasCtx.lineWidth = 10;
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(0, 0);
-            canvasCtx.lineTo(canvasElement.width, canvasElement.height);
-            canvasCtx.moveTo(canvasElement.width, 0);
-            canvasCtx.lineTo(0, canvasElement.height);
-            canvasCtx.stroke();
 
             async function sendFrame() {
                 if (!detectionActive) return;
