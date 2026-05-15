@@ -128,7 +128,15 @@
         <p>Camera: <span id="camera-status" style="color:#ffeb3b">Checking...</span> | Model: MediaPipe Pose</p>
     </header>
 
-    <div id="video-container">
+    <div id="permission-screen" style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:800px; padding:40px; background:#000; text-align:center; gap:20px;">
+        <div style="font-size:4rem;">📷</div>
+        <h2 style="margin:0; color:#4caf50;">Camera Access Required</h2>
+        <p style="color:#ccc; margin:0;">This app needs your camera to track your exercises. Your video is processed locally and never uploaded.</p>
+        <button id="allow-btn" onclick="requestCamera()" style="max-width:300px;">Allow Camera Access</button>
+        <p id="permission-error" style="color:#e91e63; margin:0; display:none;"></p>
+    </div>
+
+    <div id="video-container" style="display:none;">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="output_canvas"></canvas>
     </div>
@@ -398,21 +406,33 @@
         }
 
         // Initialize
-        window.onload = async function() {
+        async function requestCamera() {
+            const btn = document.getElementById('allow-btn');
+            const errEl = document.getElementById('permission-error');
             const statusEl = document.getElementById('camera-status');
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+            errEl.style.display = 'none';
             try {
                 await runPose();
+                document.getElementById('permission-screen').style.display = 'none';
+                document.getElementById('video-container').style.display = 'flex';
                 statusEl.textContent = 'OK';
                 statusEl.style.color = '#4caf50';
             } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Try Again';
                 const denied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
-                statusEl.textContent = denied ? 'Permission denied' : 'Not found';
+                statusEl.textContent = denied ? 'Permission denied' : 'Error';
                 statusEl.style.color = '#e91e63';
-                msgDisplay.innerText = denied
-                    ? 'Camera permission denied. Please allow access and refresh.'
+                errEl.style.display = 'block';
+                errEl.textContent = denied
+                    ? 'Permission denied. Click the camera icon in your address bar to allow access, then try again.'
                     : 'Camera error: ' + err.message;
             }
-        };
+        }
+
+        window.onload = function() {};
 
     </script>
 </body>
