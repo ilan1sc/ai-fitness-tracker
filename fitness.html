@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Fitness Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4.1646227924/pose.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 15px;
+            text-align: center;
+            width: 100%;
+            background: #000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; color: #4caf50; }
+        p { margin: 5px 0 0; font-size: 0.9rem; color: #ccc; }
+
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect for phone front cam */
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Mirror canvas to match video */
+        }
+
+        #stats-panel {
+            width: 100%;
+            padding: 20px;
+            background: #2d2d2d;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+        }
+
+        .stat-box {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #3d3d3d;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .stat-label { font-size: 1.2rem; font-weight: bold; }
+        .stat-value { font-size: 1.5rem; color: #4caf50; font-family: monospace; }
+
+        button {
+            background: #e91e63;
+            color: white;
+            border: none;
+            padding: 15px;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        button:active { transform: scale(0.98); }
+
+        #mode-selector {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 10px;
+        }
+        .mode-btn {
+            background: #555;
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: none;
+            color: white;
+            font-size: 0.9rem;
+        }
+        .mode-btn.active {
+            background: #4caf50;
+            font-weight: bold;
+        }
+
+        #message-area {
+            text-align: center;
+            height: 30px;
+            color: #ffeb3b;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>AI Fitness Tracker</h1>
+        <p>Camera: Front | Model: MediaPipe Pose</p>
+    </header>
+
+    <div id="video-container">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <div id="stats-panel">
+        <div id="message-area">Please stand by to start...</div>
+
+        <div id="mode-selector">
+            <button class="mode-btn active" onclick="setMode('pushups')">Push-ups</button>
+            <button class="mode-btn" onclick="setMode('squats')">Squats</button>
+            <button class="mode-btn" onclick="setMode('situps')">Sit-ups</button>
+        </div>
+
+        <div class="stat-box">
+            <span class="stat-label">Exercise:</span>
+            <span class="stat-value" id="current-exercise">Push-ups</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">Reps:</span>
+            <span class="stat-value" id="rep-count">0</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">Current State:</span>
+            <span class="stat-value" id="current-state">Ready</span>
+        </div>
+        
+        <button onclick="resetCounters()">Reset Counters</button>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        let currentMode = 'pushups'; // pushups, squats, situps
+        let repCount = 0;
+        let currentState = 'Ready'; // Up, Down, Transition
+        let previousState = 'Up';
+        let detectionActive = false;
+
+        // DOM Elements
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const repDisplay = document.getElementById('rep-count');
+        const stateDisplay = document.getElementById('current-state');
+        const msgDisplay = document.getElementById('message-area');
+        const exerciseDisplay = document.getElementById('current-exercise');
+
+        // --- SETUP MEDIAPIPE POSE ---
+        const pose = new Pose({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4.1646227924/${file}`;
+        }});
+
+        pose.setOptions({
+            modelComplexity: 1, // 0=Lite, 1=Standard, 2=Heavy (Accuracy vs Speed)
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        pose.onResults((results) => {
+            if (!detectionActive) return;
+
+            // Draw the skeleton
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.poseLandmarks) {
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
+                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
+                
+                analyzePose(results.poseLandmarks);
+            }
+            canvasCtx.restore();
+        });
+
+        // --- VIDEO INITIALIZATION ---
+        async function setupCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Browser does not support Camera API');
+                return;
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: "user" // Use front camera
+                }
+            });
+            videoElement.srcObject = stream;
+            return new Promise((resolve) => {
+                videoElement.onloadedmetadata = () => {
+                    resolve(videoElement);
+                };
+            });
+        }
+
+        async function runPose() {
+            await setupCamera();
+            detectionActive = true;
+            msgDisplay.innerText = "Tracking Started. Make sure you are fully visible.";
+            
+            // Set canvas size to match video
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            
+            await pose.send({image: videoElement});
+        }
+
+        // --- LOGIC: Exercise Detection Algorithms ---
+
+        function getCoordinates(landmarks, index) {
+            const lm = landmarks[index];
+            return { x: lm.x, y: lm.y, visible: lm.visibility > 0.5 };
+        }
+
+        function calculateAngle(a, b, c) {
+            // Calculate angle between three points (in degrees)
+            // a = top point, b = joint point, c = bottom point
+            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+            let angle = Math.abs(radians * 180.0 / Math.PI);
+            if (angle > 180.0) angle = 360 - angle;
+            return angle;
+        }
+
+        function analyzePose(landmarks) {
+            // Get specific landmarks
+            // 11: Left Shoulder, 12: Right Shoulder
+            // 13: Left Elbow, 14: Right Elbow
+            // 23: Left Hip, 24: Right Hip
+            // 25: Left Knee, 26: Right Knee
+            
+            const leftShoulder = getCoordinates(landmarks, 11);
+            const rightShoulder = getCoordinates(landmarks, 12);
+            const leftElbow = getCoordinates(landmarks, 13);
+            const rightElbow = getCoordinates(landmarks, 14);
+            const leftHip = getCoordinates(landmarks, 23);
+            const rightHip = getCoordinates(landmarks, 24);
+            const leftKnee = getCoordinates(landmarks, 25);
+            const rightKnee = getCoordinates(landmarks, 26);
+
+            // Average values for bilateral body parts
+            const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+            const hipY = (leftHip.y + rightHip.y) / 2;
+            const kneeY = (leftKnee.y + rightKnee.y) / 2;
+            
+            // Elbow Angle (Bending)
+            const leftElbowAngle = calculateAngle(leftShoulder, leftElbow, leftHip); // Approx angle for arm movement
+            const rightElbowAngle = calculateAngle(rightShoulder, rightElbow, rightHip);
+            const avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
+
+            // Hip Angle (Torso vs Thighs - for Squats/Situps)
+            const leftHipAngle = calculateAngle(leftShoulder, leftHip, leftKnee);
+            const rightHipAngle = calculateAngle(rightShoulder, rightHip, rightKnee);
+            const avgHipAngle = (leftHipAngle + rightHipAngle) / 2;
+
+            // Logic Switch for different exercises
+            if (currentMode === 'pushups') {
+                processPushUps(avgElbowAngle);
+            } else if (currentMode === 'squats') {
+                processSquats(avgHipAngle);
+            } else if (currentMode === 'situps') {
+                processSitUps(shoulderY, hipY, kneeY);
+            }
+        }
+
+        function processPushUps(elbowAngle) {
+            // Pushup Logic:
+            // Up: Elbow Angle ~ 160-180 degrees
+            // Down: Elbow Angle ~ 60-90 degrees
+            
+            if (elbowAngle > 140) {
+                currentState = 'Up';
+            } else if (elbowAngle < 100) {
+                currentState = 'Down';
+            }
+
+            if (previousState === 'Down' && currentState === 'Up') {
+                repCount++;
+                repDisplay.innerText = repCount;
+                msgDisplay.innerText = "Rep Completed!";
+                msgDisplay.style.color = "#4caf50";
+                setTimeout(() => msgDisplay.innerText = "", 1000);
+            }
+            
+            previousState = currentState;
+            stateDisplay.innerText = currentState;
+        }
+
+        function processSquats(hipAngle) {
+            // Squat Logic:
+            // Up: Hip Angle ~ 160-180 degrees (Legs Straight)
+            // Down: Hip Angle ~ 90-130 degrees (Legs Bent)
+            
+            // Note: Camera angle matters. Must be slightly in front or behind.
+            
+            if (hipAngle > 150) {
+                currentState = 'Standing';
+            } else if (hipAngle < 120) {
+                currentState = 'Squatting';
+            }
+
+            if (previousState === 'Squatting' && currentState === 'Standing') {
+                repCount++;
+                repDisplay.innerText = repCount;
+                msgDisplay.innerText = "Squat Completed!";
+                msgDisplay.style.color = "#4caf50";
+                setTimeout(() => msgDisplay.innerText = "", 1000);
+            }
+
+            previousState = currentState;
+            stateDisplay.innerText = currentState;
+        }
+
+        function processSitUps(shoulderY, hipY, kneeY) {
+            // Sit-up Logic:
+            // Lie down: Shoulder Y is close to Hip Y (Vertical alignment doesn't matter as much, but torso is flat)
+            // Sit up: Shoulder Y moves significantly closer to knees (Torso bends)
+            
+            // Simplified logic: Compare shoulder-to-hip vertical distance vs hip-to-knee
+            // In a full sit-up, shoulders move towards knees.
+            
+            // Since we are using 2D coordinates and camera perspective varies wildly for situps,
+            // we look at the "Angle" of the torso relative to the legs.
+            
+            const torsoToLegAngle = calculateAngle({x: 0, y: shoulderY}, {x: 0, y: hipY}, {x: 0, y: kneeY});
+            
+            // If angle is close to 180, body is straight (lying down or standing)
+            // If angle is < 90, torso is bent (sitting up)
+            
+            if (torsoToLegAngle < 80) {
+                currentState = 'Up (Sit)';
+            } else if (torsoToLegAngle > 160) {
+                currentState = 'Down (Lie)';
+            }
+
+            if (previousState === 'Down (Lie)' && currentState === 'Up (Sit)') {
+                repCount++;
+                repDisplay.innerText = repCount;
+                msgDisplay.innerText = "Sit-up Completed!";
+                msgDisplay.style.color = "#4caf50";
+                setTimeout(() => msgDisplay.innerText = "", 1000);
+            }
+
+            previousState = currentState;
+            stateDisplay.innerText = currentState;
+        }
+
+        // --- UI CONTROLS ---
+        function setMode(mode) {
+            currentMode = mode;
+            repCount = 0;
+            repDisplay.innerText = '0';
+            currentState = 'Ready';
+            previousState = 'Ready';
+            
+            // Update UI buttons
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            exerciseDisplay.innerText = mode.charAt(0).toUpperCase() + mode.slice(1) + 's';
+            msgDisplay.innerText = `Mode switched to ${mode}. Resetting counters.`;
+            msgDisplay.style.color = "#ffeb3b";
+        }
+
+        function resetCounters() {
+            repCount = 0;
+            repDisplay.innerText = '0';
+            msgDisplay.innerText = "Counters Reset";
+        }
+
+        // Initialize
+        window.onload = runPose;
+
+    </script>
+</body>
+</html>
